@@ -63,13 +63,61 @@ DATABASE_PATH=data/attendance.db
 
 ### 5. Run the Bot
 
-**Development mode:**
+**Using Windows Batch Script (Windows - No dependencies, works everywhere):**
+
+```batch
+# Simple commands for any Windows environment
+.\build.bat help      # Show available commands
+.\build.bat build     # Build the bot
+.\build.bat run       # Build and run
+.\build.bat setup     # Run TOTP setup
+```
+
+**Using PowerShell Script (Windows - Advanced features):**
+
+```powershell
+# Full-featured script for Windows
+.\build.ps1 help      # Show all commands
+.\build.ps1 start     # Quick start (builds, sets up TOTP, and runs)
+.\build.ps1 dev       # Build and run for development
+.\build.ps1 init      # Initialize project
+```
+
+**Using Just (Cross-platform - Most flexible):**
+
+Install Just command runner:
+
+```bash
+# Windows (using Scoop)
+scoop install just
+
+# Windows (using Chocolatey)
+choco install just
+
+# Or download from: https://github.com/casey/just/releases
+```
+
+Then use Just commands:
+
+```bash
+# Quick start (builds everything and runs setup)
+just start
+
+# Development mode
+just dev-windows    # Windows
+just dev           # Unix/Linux/macOS
+
+# View all available commands
+just --list
+```
+
+**Manual Development mode:**
 
 ```bash
 go run cmd/bot/main.go
 ```
 
-**Production build:**
+**Manual Production build:**
 
 ```bash
 go build -o attendance-bot cmd/bot/main.go
@@ -193,7 +241,70 @@ attendance-bot-go/
 
 ## Development
 
-### Building
+### Build Automation
+
+This project includes multiple build automation options:
+
+**PowerShell Script (Windows - No dependencies required):**
+
+```powershell
+# All-in-one script for Windows users
+.\build.ps1 help          # Show available commands
+.\build.ps1 start         # Quick start (init + run)
+.\build.ps1 build         # Build bot and setup utility
+.\build.ps1 dev          # Build and run for development
+.\build.ps1 test         # Run tests
+.\build.ps1 release      # Build for all platforms
+```
+
+**Using Just (Recommended for cross-platform):**
+
+```bash
+# Install Just: https://github.com/casey/just
+# Windows: scoop install just  OR  choco install just
+
+# View all available commands
+just
+
+# Quick start (Windows)
+just start
+
+# Build and develop
+just build
+just dev-windows    # Windows
+just dev           # Unix/Linux/macOS
+
+# Cross-platform builds
+just build-windows
+just build-linux
+just build-darwin
+
+# Testing and quality
+just test
+just test-coverage
+just check         # fmt + vet + test
+
+# Release builds
+just release       # All platforms
+
+# Docker operations
+just docker-build
+just docker-run
+just docker-logs
+```
+
+**Using Make (Traditional):**
+
+```bash
+# All commands from Makefile
+make help          # Show available targets
+make all           # Build everything
+make build         # Build bot and setup utility
+make test          # Run tests
+make docker-build  # Build Docker image
+```
+
+### Manual Building
 
 ```bash
 # Build for current platform
