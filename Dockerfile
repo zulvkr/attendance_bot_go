@@ -1,35 +1,19 @@
-# Build stage
-FROM golang:1.22-alpine AS builder
+# Attendance Bot Go - Optimized Dockerfile using prebuilt binary
+# No build stage needed - uses prebuilt Linux binary from release/
 
-# Install git for go modules
-RUN apk add --no-cache git
-
-# Set working directory
-WORKDIR /app
-
-# Copy go mod and sum files
-COPY go.mod go.sum ./
-
-# Download dependencies
-RUN go mod download
-
-# Copy source code
-COPY . .
-
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/bot
-
-# Final stage
 FROM alpine:latest
 
-# Install ca-certificates for HTTPS requests
+# Install ca-certificates for HTTPS requests and timezone data
 RUN apk --no-cache add ca-certificates tzdata
 
 # Create app directory
 WORKDIR /root/
 
-# Copy the binary from builder stage
-COPY --from=builder /app/main .
+# Copy the prebuilt Linux binary
+COPY release/attendance-bot-linux-amd64 ./attendance-bot
+
+# Make binary executable
+RUN chmod +x ./attendance-bot
 
 # Create data directory for SQLite database
 RUN mkdir -p /root/data
@@ -47,4 +31,4 @@ EXPOSE 8080
 VOLUME ["/root/data"]
 
 # Run the binary
-CMD ["./main"]
+CMD ["./attendance-bot"]
