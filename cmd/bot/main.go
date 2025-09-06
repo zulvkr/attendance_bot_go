@@ -47,7 +47,7 @@ func main() {
 	csvGenerator := reports.NewCSVGenerator("temp")
 
 	// Initialize bot
-	botInstance := bot.NewBot(cfg.BotToken, attendanceService, csvGenerator, logger)
+	botInstance := bot.NewBot(cfg.BotToken, attendanceService, csvGenerator, cfg, logger)
 
 	// Set up graceful shutdown
 	sigChan := make(chan os.Signal, 1)

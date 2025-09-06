@@ -2,31 +2,43 @@ package bot
 
 import (
 	"attendance-bot/internal/attendance"
+	"attendance-bot/internal/config"
 	"attendance-bot/internal/reports"
 	"attendance-bot/internal/utils"
 	"attendance-bot/pkg/models"
 	"fmt"
 	"log/slog"
+	"os"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// SessionData represents user session state
+type SessionData struct {
+	AwaitingDateRange bool
+}
 
 // Bot represents the main bot instance
 type Bot struct {
 	api               *TelegramAPI
 	attendanceService *attendance.Service
 	csvGenerator      *reports.CSVGenerator
+	config            *config.Config
 	logger            *slog.Logger
 	lastUpdateID      int64
+	sessions          map[int64]*SessionData // Simple in-memory session storage
 }
 
 // NewBot creates a new bot instance
-func NewBot(token string, attendanceService *attendance.Service, csvGenerator *reports.CSVGenerator, logger *slog.Logger) *Bot {
+func NewBot(token string, attendanceService *attendance.Service, csvGenerator *reports.CSVGenerator, cfg *config.Config, logger *slog.Logger) *Bot {
 	return &Bot{
 		api:               NewTelegramAPI(token),
 		attendanceService: attendanceService,
 		csvGenerator:      csvGenerator,
+		config:            cfg,
 		logger:            logger,
+		sessions:          make(map[int64]*SessionData),
 	}
 }
 
@@ -253,9 +265,22 @@ func (b *Bot) handleAlias(msg *Message, args []string) error {
 
 // handleFullReport handles the /fullreport command
 func (b *Bot) handleFullReport(msg *Message, args []string) error {
-	// For now, just return a message about CSV generation
-	// Full implementation would require file upload capability
-	return b.sendMessage(msg.Chat.ID, "📋 Fitur laporan CSV akan segera tersedia. Gunakan /report untuk laporan harian.")
+	response := `📊 *Laporan Lengkap Absensi*
+
+Silakan masukkan password admin dan rentang tanggal dalam format:
+` + "`[password] YYYY-MM-DD YYYY-MM-DD`" + `
+
+*Contoh:*
+` + "`admin123 2025-01-01 2025-01-31`" + `
+
+*Catatan:* Laporan akan dikirim dalam format CSV.`
+
+	// Set user session to await date range input
+	b.sessions[msg.From.ID] = &SessionData{
+		AwaitingDateRange: true,
+	}
+
+	return b.sendMarkdownMessage(msg.Chat.ID, response)
 }
 
 // handleOTP handles OTP verification and attendance marking
@@ -293,6 +318,12 @@ func (b *Bot) handleOTP(msg *Message) error {
 
 // handleTextMessage handles non-command text messages
 func (b *Bot) handleTextMessage(msg *Message) error {
+	// Check if user is awaiting date range input for full report
+	session := b.sessions[msg.From.ID]
+	if session != nil && session.AwaitingDateRange {
+		return b.handleFullReportInput(msg)
+	}
+
 	return b.sendMessage(msg.Chat.ID, "📝 Kirimkan kode OTP 6 digit Anda untuk absen, atau ketik /help untuk bantuan.")
 }
 
@@ -356,6 +387,101 @@ func (b *Bot) formatHistoryMessage(records []models.AttendanceRecord) string {
 	message.WriteString(fmt.Sprintf("📝 Total Absensi: %d", totalRecords))
 
 	return message.String()
+}
+
+// handleFullReportInput processes user input for full report generation
+func (b *Bot) handleFullReportInput(msg *Message) error {
+	// Clear the session state
+	delete(b.sessions, msg.From.ID)
+
+	text := strings.TrimSpace(msg.Text)
+
+	// Validate password and date range format
+	dateRangeRegex := regexp.MustCompile(`^(\S+)\s+(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})$`)
+	matches := dateRangeRegex.FindStringSubmatch(text)
+
+	if len(matches) != 4 {
+		return b.sendMessage(msg.Chat.ID, "❌ Format input tidak valid. Gunakan format: [password] YYYY-MM-DD YYYY-MM-DD\n\nContoh: admin123 2025-01-01 2025-01-31")
+	}
+
+	password := matches[1]
+	startDate := matches[2]
+	endDate := matches[3]
+
+	// Check password
+	if password != b.config.AdminPassword {
+		return b.sendMessage(msg.Chat.ID, "❌ Password admin salah. Akses ditolak.")
+	}
+
+	// Validate dates
+	start, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		return b.sendMessage(msg.Chat.ID, "❌ Tanggal mulai tidak valid. Pastikan format tanggal benar (YYYY-MM-DD).")
+	}
+
+	end, err := time.Parse("2006-01-02", endDate)
+	if err != nil {
+		return b.sendMessage(msg.Chat.ID, "❌ Tanggal akhir tidak valid. Pastikan format tanggal benar (YYYY-MM-DD).")
+	}
+
+	if start.After(end) {
+		return b.sendMessage(msg.Chat.ID, "❌ Tanggal mulai tidak boleh lebih besar dari tanggal akhir.")
+	}
+
+	// Generate and send CSV report
+	if err := b.sendMessage(msg.Chat.ID, "⏳ Membuat laporan CSV... Mohon tunggu."); err != nil {
+		return err
+	}
+
+	return b.generateAndSendCSVReport(msg.Chat.ID, startDate, endDate)
+}
+
+// generateAndSendCSVReport generates a CSV report and sends it as a document
+func (b *Bot) generateAndSendCSVReport(chatID int64, startDate, endDate string) error {
+	// Get attendance records for the date range
+	records, err := b.attendanceService.GetAttendanceReportRange(startDate, endDate)
+	if err != nil {
+		b.logger.Error("Failed to get attendance records", "error", err)
+		return b.sendMessage(chatID, "❌ Terjadi kesalahan saat mengambil data absensi.")
+	}
+
+	if len(records) == 0 {
+		return b.sendMessage(chatID, "📭 Tidak ada data absensi dalam rentang tanggal yang ditentukan.")
+	}
+
+	// Generate CSV file
+	filePath, err := b.csvGenerator.GenerateAttendanceReport(records, startDate, endDate)
+	if err != nil {
+		b.logger.Error("Failed to generate CSV report", "error", err)
+		return b.sendMessage(chatID, "❌ Terjadi kesalahan saat membuat laporan CSV.")
+	}
+
+	// Send CSV file
+	file, err := os.Open(filePath)
+	if err != nil {
+		b.logger.Error("Failed to open CSV file", "error", err)
+		return b.sendMessage(chatID, "❌ Terjadi kesalahan saat membuka file laporan.")
+	}
+	defer file.Close()
+
+	filename := fmt.Sprintf("attendance_%s_to_%s.csv", startDate, endDate)
+
+	// Send the file
+	if err := b.api.SendDocument(chatID, file, filename); err != nil {
+		b.logger.Error("Failed to send CSV document", "error", err)
+		return b.sendMessage(chatID, "❌ Terjadi kesalahan saat mengirim laporan.")
+	}
+
+	// Send confirmation message with statistics
+	caption := fmt.Sprintf("📊 *Laporan Absensi*\n\n📅 Periode: %s s/d %s\n📈 Total Records: %d",
+		startDate, endDate, len(records))
+
+	// Clean up temp file
+	if err := os.Remove(filePath); err != nil {
+		b.logger.Warn("Failed to clean up temp file", "file", filePath, "error", err)
+	}
+
+	return b.sendMarkdownMessage(chatID, caption)
 }
 
 // sendMessage sends a plain text message

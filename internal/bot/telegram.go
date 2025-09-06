@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -183,9 +184,64 @@ func (api *TelegramAPI) SendMessageWithOptions(chatID int64, text string, option
 
 // SendDocument sends a document to a chat
 func (api *TelegramAPI) SendDocument(chatID int64, document io.Reader, filename string) error {
-	// This is a simplified implementation
-	// In a full implementation, you'd use multipart/form-data
-	return fmt.Errorf("sendDocument not implemented yet")
+	// Create a multipart writer
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+
+	// Add chat_id field
+	if err := writer.WriteField("chat_id", strconv.FormatInt(chatID, 10)); err != nil {
+		return fmt.Errorf("failed to write chat_id field: %w", err)
+	}
+
+	// Add document field
+	part, err := writer.CreateFormFile("document", filename)
+	if err != nil {
+		return fmt.Errorf("failed to create form file: %w", err)
+	}
+
+	// Copy document content to the form field
+	if _, err := io.Copy(part, document); err != nil {
+		return fmt.Errorf("failed to copy document content: %w", err)
+	}
+
+	// Close the multipart writer
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to close multipart writer: %w", err)
+	}
+
+	// Create the request
+	req, err := http.NewRequest("POST", api.baseURL+"/sendDocument", &buf)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set content type header
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	// Send the request
+	resp, err := api.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send document: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("telegram API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse response
+	var response SendMessageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if !response.OK {
+		return fmt.Errorf("telegram API error")
+	}
+
+	return nil
 }
 
 // GetMe returns basic information about the bot
