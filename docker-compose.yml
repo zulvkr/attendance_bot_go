@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  attendance-bot:
+    build: .
+    container_name: attendance-bot-go
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Jakarta
+    volumes:
+      - ./data:/root/data
+      - ./temp:/root/temp
+    # No ports needed for Telegram bot
+    # but you can expose one if you add webhook support later
+    # ports:
+    #   - "8080:8080"
