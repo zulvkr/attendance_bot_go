@@ -10,9 +10,13 @@ services:
     environment:
       - TZ=Asia/Jakarta
     volumes:
-      - ./data:/root/data
+      - attendance_data:/root/data
       - ./temp:/root/temp
     # No ports needed for Telegram bot
     # but you can expose one if you add webhook support later
     # ports:
     #   - "8080:8080"
+
+volumes:
+  attendance_data:
+    driver: local
