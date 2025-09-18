@@ -253,15 +253,7 @@ func (s *Service) GetUsersCurrentlyOnShift() (string, error) {
 		checkInTime := utils.FormatTime(record.Timestamp, "HH:mm")
 		
 		message.WriteString(fmt.Sprintf("%d. **%s**\n", i+1, name))
-		message.WriteString(fmt.Sprintf("   ⏰ Masuk: %s", checkInTime))
-		
-		// Add status indicator for late arrival (after 9:00 AM)
-		if record.Timestamp.Hour() >= 9 {
-			message.WriteString(" ⚠️")
-		} else {
-			message.WriteString(" ✅")
-		}
-		message.WriteString("\n\n")
+		message.WriteString(fmt.Sprintf("   ⏰ Masuk: %s\n\n", checkInTime))
 	}
 
 	message.WriteString(fmt.Sprintf("📊 Total sedang shift: %d orang", len(records)))
