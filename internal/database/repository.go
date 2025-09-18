@@ -278,3 +278,36 @@ func (r *Repository) CheckUserAttendanceExists(userID int64, date, attendanceTyp
 
 	return exists, nil
 }
+
+// GetUsersCurrentlyOnShift returns users who have checked in today but haven't checked out
+func (r *Repository) GetUsersCurrentlyOnShift(date string) ([]models.AttendanceRecord, error) {
+	query := `
+		SELECT DISTINCT a.id, a.user_id, a.username, a.first_name, a.last_name, a.timestamp, a.type, a.date
+		FROM attendance a
+		WHERE a.date = ? AND a.type = 'check_in'
+		AND NOT EXISTS (
+			SELECT 1 FROM attendance a2 
+			WHERE a2.user_id = a.user_id 
+			AND a2.date = a.date 
+			AND a2.type = 'check_out'
+		)
+		ORDER BY a.timestamp ASC
+	`
+
+	rows, err := r.db.Query(query, date)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users currently on shift: %w", err)
+	}
+	defer rows.Close()
+
+	var records []models.AttendanceRecord
+	for rows.Next() {
+		record, err := r.scanAttendanceRecord(rows)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, *record)
+	}
+
+	return records, nil
+}
