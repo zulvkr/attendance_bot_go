@@ -123,6 +123,8 @@ func (b *Bot) handleCommand(msg *Message) error {
 		return b.handleAlias(msg, args)
 	case "/fullreport":
 		return b.handleFullReport(msg, args)
+	case "/who":
+		return b.handleWho(msg)
 	default:
 		return b.sendMessage(msg.Chat.ID, "❓ Perintah tidak dikenal. Ketik /help untuk melihat daftar perintah.")
 	}
@@ -140,6 +142,7 @@ Untuk absen, kirimkan kode OTP 6 digit Anda.
 📈 /history - Lihat riwayat absensi Anda
 🏷️ /alias - Absen dengan nama lain
 🔄 /status - Cek status absensi hari ini
+👥 /who - Lihat siapa yang sedang shift
 📋 /fullreport - Download laporan lengkap (CSV)
 ❓ /help - Tampilkan pesan bantuan ini
 
@@ -167,6 +170,7 @@ func (b *Bot) handleHelp(msg *Message) error {
 📊 /report - Lihat laporan absensi hari ini
 📈 /history - Lihat riwayat absensi Anda (30 hari terakhir)
 🔄 /status - Cek status absensi hari ini (masuk/pulang)
+👥 /who - Lihat siapa yang sedang shift saat ini
 🏷️ /alias - Gunakan nama panggilan/alias untuk absensi
    Format: /alias [Nama Depan] [Nama Belakang]
    Contoh: /alias John Doe
@@ -482,6 +486,17 @@ func (b *Bot) generateAndSendCSVReport(chatID int64, startDate, endDate string) 
 	}
 
 	return b.sendMarkdownMessage(chatID, caption)
+}
+
+// handleWho handles the /who command
+func (b *Bot) handleWho(msg *Message) error {
+	report, err := b.attendanceService.GetUsersCurrentlyOnShift()
+	if err != nil {
+		b.logger.Error("Failed to get users currently on shift", "error", err, "user_id", msg.From.ID)
+		return b.sendMessage(msg.Chat.ID, "❌ Terjadi kesalahan saat mengambil data shift. Silakan coba lagi.")
+	}
+
+	return b.sendMarkdownMessage(msg.Chat.ID, report)
 }
 
 // sendMessage sends a plain text message

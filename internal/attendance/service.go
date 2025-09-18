@@ -230,3 +230,33 @@ func (s *Service) formatUserName(record *models.AttendanceRecord) string {
 func (s *Service) GetAttendanceReportRange(startDate, endDate string) ([]models.AttendanceRecord, error) {
 	return s.repo.GetAttendanceReportRange(startDate, endDate)
 }
+
+// GetUsersCurrentlyOnShift returns a formatted list of users currently on shift
+func (s *Service) GetUsersCurrentlyOnShift() (string, error) {
+	today := utils.GetTodayDate()
+	records, err := s.repo.GetUsersCurrentlyOnShift(today)
+	if err != nil {
+		return "", fmt.Errorf("failed to get users currently on shift: %w", err)
+	}
+
+	if len(records) == 0 {
+		return "👥 *Siapa yang Sedang Shift?*\n\n❌ Tidak ada yang sedang shift saat ini.\nSemua sudah check-out atau belum ada yang check-in hari ini.", nil
+	}
+
+	var message strings.Builder
+	message.WriteString("👥 *Siapa yang Sedang Shift?*\n\n")
+	message.WriteString(fmt.Sprintf("📅 %s\n\n", 
+		utils.FormatDate(time.Now(), "dd MMMM yyyy")))
+
+	for i, record := range records {
+		name := s.formatUserName(&record)
+		checkInTime := utils.FormatTime(record.Timestamp, "HH:mm")
+		
+		message.WriteString(fmt.Sprintf("%d. **%s**\n", i+1, name))
+		message.WriteString(fmt.Sprintf("   ⏰ Masuk: %s\n\n", checkInTime))
+	}
+
+	message.WriteString(fmt.Sprintf("📊 Total sedang shift: %d orang", len(records)))
+
+	return message.String(), nil
+}
